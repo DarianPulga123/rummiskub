@@ -1,0 +1,1021 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Rummikub – Online Multiplayer</title>
+  <script src="https://cdn.socket.io/4.6.1/socket.io.min.js"></script>
+  <style>
+    * {
+      box-sizing: border-box;
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+
+    body {
+      margin: 0;
+      background: radial-gradient(circle at top, #222 0, #111 45%, #050505 100%);
+      color: #f5f5f5;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* Lobby/Connection Screen */
+    #lobbyScreen {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+      padding: 20px;
+      gap: 24px;
+    }
+
+    #lobbyScreen.hidden {
+      display: none;
+    }
+
+    .lobby-card {
+      background: radial-gradient(circle at top, rgba(255, 255, 255, 0.08), rgba(0, 0, 0, 0.95) 55%);
+      border-radius: 20px;
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      padding: 32px;
+      max-width: 480px;
+      width: 100%;
+      box-shadow: 0 24px 48px rgba(0, 0, 0, 0.9);
+    }
+
+    .lobby-card h2 {
+      margin: 0 0 24px 0;
+      font-size: 24px;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      text-align: center;
+    }
+
+    .lobby-form {
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+
+    .lobby-form input {
+      padding: 12px 16px;
+      border-radius: 12px;
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      background: rgba(0, 0, 0, 0.6);
+      color: #f5f5f5;
+      font-size: 14px;
+    }
+
+    .lobby-form input:focus {
+      outline: none;
+      border-color: #3f8bff;
+      box-shadow: 0 0 0 3px rgba(63, 139, 255, 0.2);
+    }
+
+    .lobby-buttons {
+      display: flex;
+      gap: 12px;
+    }
+
+    .lobby-buttons button {
+      flex: 1;
+    }
+
+    .connection-status {
+      padding: 8px 16px;
+      border-radius: 999px;
+      font-size: 12px;
+      text-align: center;
+      margin-top: 16px;
+    }
+
+    .connection-status.connected {
+      background: rgba(129, 199, 132, 0.2);
+      border: 1px solid rgba(129, 199, 132, 0.6);
+      color: #c8e6c9;
+    }
+
+    .connection-status.disconnected {
+      background: rgba(244, 67, 54, 0.2);
+      border: 1px solid rgba(244, 67, 54, 0.6);
+      color: #ffcdd2;
+    }
+
+    header {
+      padding: 12px 20px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      background: rgba(0, 0, 0, 0.85);
+      border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+      backdrop-filter: blur(12px);
+      position: sticky;
+      top: 0;
+      z-index: 10;
+    }
+
+    header h1 {
+      font-size: 20px;
+      margin: 0;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    header h1 span {
+      font-size: 13px;
+      font-weight: 400;
+      opacity: 0.75;
+      text-transform: none;
+      letter-spacing: normal;
+    }
+
+    .player-info {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      font-size: 12px;
+    }
+
+    .player-badge {
+      padding: 4px 10px;
+      border-radius: 999px;
+      background: rgba(63, 139, 255, 0.2);
+      border: 1px solid rgba(63, 139, 255, 0.5);
+    }
+
+    .player-badge.your-turn {
+      background: rgba(129, 199, 132, 0.3);
+      border-color: rgba(129, 199, 132, 0.8);
+      animation: pulse 2s infinite;
+    }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.7; }
+    }
+
+    .controls {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+
+    button {
+      appearance: none;
+      border: none;
+      border-radius: 999px;
+      padding: 6px 14px;
+      font-size: 13px;
+      font-weight: 500;
+      cursor: pointer;
+      background: linear-gradient(135deg, #ff9d3f, #ff5f6c);
+      color: #111;
+      box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.5), 0 6px 18px rgba(0, 0, 0, 0.7);
+      transition: transform 0.12s ease, box-shadow 0.12s ease, filter 0.12s ease;
+      white-space: nowrap;
+    }
+
+    button:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+
+    button.secondary {
+      background: linear-gradient(135deg, #3f8bff, #6b5bff);
+      color: #f5f5f5;
+    }
+
+    button.ghost {
+      background: transparent;
+      color: #ddd;
+      border-radius: 999px;
+      padding-inline: 10px;
+      box-shadow: none;
+      border: 1px solid rgba(255, 255, 255, 0.16);
+    }
+
+    button:hover:not(:disabled) {
+      transform: translateY(-1px);
+      box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.5), 0 10px 22px rgba(0, 0, 0, 0.8);
+      filter: brightness(1.03);
+    }
+
+    button:active:not(:disabled) {
+      transform: translateY(0);
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.7);
+      filter: brightness(0.96);
+    }
+
+    main {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      padding: 12px 16px 16px;
+    }
+
+    main.hidden {
+      display: none;
+    }
+
+    .status-bar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      font-size: 13px;
+      color: #cfd8dc;
+      padding: 6px 10px;
+      border-radius: 999px;
+      background: radial-gradient(circle at top left, rgba(255, 255, 255, 0.06), transparent 60%);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+    }
+
+    .status-bar span.label {
+      text-transform: uppercase;
+      letter-spacing: 0.14em;
+      font-size: 11px;
+      opacity: 0.8;
+    }
+
+    .status-message {
+      flex: 1;
+    }
+
+    .pill {
+      padding: 2px 8px;
+      border-radius: 999px;
+      font-size: 11px;
+      background: rgba(3, 169, 244, 0.12);
+      border: 1px solid rgba(3, 169, 244, 0.6);
+      color: #e3f2fd;
+    }
+
+    .layout {
+      display: grid;
+      grid-template-rows: minmax(220px, 1.2fr) minmax(140px, 0.9fr);
+      gap: 12px;
+      min-height: 0;
+    }
+
+    .panel {
+      background: radial-gradient(circle at top, rgba(255, 255, 255, 0.06), rgba(0, 0, 0, 0.9) 55%);
+      border-radius: 18px;
+      border: 1px solid rgba(255, 255, 255, 0.09);
+      padding: 10px 12px;
+      box-shadow:
+        0 18px 40px rgba(0, 0, 0, 0.85),
+        inset 0 0 0 1px rgba(255, 255, 255, 0.03);
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      min-height: 0;
+    }
+
+    .panel-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      font-size: 13px;
+      text-transform: uppercase;
+      letter-spacing: 0.16em;
+      color: rgba(236, 239, 241, 0.9);
+    }
+
+    .panel-header small {
+      font-size: 11px;
+      letter-spacing: 0.06em;
+      opacity: 0.8;
+      text-transform: none;
+    }
+
+    .table {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      padding: 6px;
+      border-radius: 12px;
+      background: repeating-linear-gradient(
+        90deg,
+        rgba(3, 169, 244, 0.14) 0,
+        rgba(3, 169, 244, 0.14) 1px,
+        rgba(0, 0, 0, 0.85) 1px,
+        rgba(0, 0, 0, 0.85) 40px
+      );
+      overflow-y: auto;
+    }
+
+    .table-row {
+      min-height: 62px;
+      border-radius: 12px;
+      border: 1px dashed rgba(255, 255, 255, 0.16);
+      padding: 6px 6px 8px;
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      overflow-x: auto;
+      background: linear-gradient(135deg, rgba(0, 0, 0, 0.9), rgba(21, 24, 30, 0.96));
+    }
+
+    .table-row.empty::before {
+      content: "Drag tiles here";
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.18em;
+      opacity: 0.45;
+      margin-left: 8px;
+    }
+
+    .table-row.valid {
+      border-style: solid;
+      border-color: rgba(129, 199, 132, 0.9);
+      box-shadow: 0 0 0 1px rgba(129, 199, 132, 0.6);
+    }
+
+    .table-row.invalid {
+      border-style: solid;
+      border-color: rgba(244, 67, 54, 0.85);
+      box-shadow: 0 0 0 1px rgba(244, 67, 54, 0.7);
+    }
+
+    .rack {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+
+    .rack-row {
+      min-height: 70px;
+      border-radius: 14px;
+      padding: 8px 8px 10px;
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      overflow-x: auto;
+      background: linear-gradient(180deg, rgba(10, 10, 10, 0.95), rgba(0, 0, 0, 0.96));
+      box-shadow:
+        0 12px 26px rgba(0, 0, 0, 0.9),
+        inset 0 0 0 1px rgba(255, 255, 255, 0.04);
+    }
+
+    .rack-label {
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.16em;
+      opacity: 0.7;
+      margin-left: 4px;
+    }
+
+    .tile {
+      position: relative;
+      width: 44px;
+      height: 60px;
+      border-radius: 10px;
+      background: radial-gradient(circle at top left, #fdfdfd 0, #f2f2f2 36%, #dfdfdf 100%);
+      border: 1px solid rgba(0, 0, 0, 0.75);
+      box-shadow:
+        0 4px 8px rgba(0, 0, 0, 0.75),
+        inset 0 0 0 1px rgba(255, 255, 255, 0.7);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 20px;
+      font-weight: 700;
+      cursor: grab;
+      user-select: none;
+      transition: transform 0.14s ease, box-shadow 0.14s ease, filter 0.14s ease;
+      flex-shrink: 0;
+    }
+
+    .tile.dragging {
+      opacity: 0.7;
+      transform: scale(1.06) translateY(-3px);
+      box-shadow:
+        0 12px 22px rgba(0, 0, 0, 0.85),
+        inset 0 0 0 1px rgba(255, 255, 255, 0.75);
+      cursor: grabbing;
+      z-index: 2;
+    }
+
+    .tile::after {
+      content: "";
+      position: absolute;
+      bottom: 4px;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 20px;
+      height: 4px;
+      border-radius: 999px;
+      background: linear-gradient(90deg, rgba(0, 0, 0, 0.12), rgba(0, 0, 0, 0.35));
+    }
+
+    .tile[data-color="red"] {
+      color: #e53935;
+    }
+
+    .tile[data-color="blue"] {
+      color: #1e88e5;
+    }
+
+    .tile[data-color="black"] {
+      color: #263238;
+    }
+
+    .tile[data-color="orange"] {
+      color: #fb8c00;
+    }
+
+    .tile.joker {
+      background: radial-gradient(circle at top, #fef9e7 0, #f9f2d2 40%, #ebdfb5 100%);
+      color: #6d4c41;
+      font-size: 24px;
+    }
+
+    .tile.joker::before {
+      content: "★";
+      position: absolute;
+      top: 6px;
+      right: 7px;
+      font-size: 11px;
+      opacity: 0.8;
+    }
+
+    .pool {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 12px;
+      opacity: 0.9;
+    }
+
+    .pool-count {
+      padding: 2px 7px;
+      border-radius: 999px;
+      background: rgba(0, 0, 0, 0.8);
+      border: 1px solid rgba(255, 255, 255, 0.18);
+    }
+  </style>
+</head>
+<body>
+  <!-- Lobby Screen -->
+  <div id="lobbyScreen">
+    <div class="lobby-card">
+      <h2>Rummikub Online</h2>
+      <div class="lobby-form">
+        <input type="text" id="playerNameInput" placeholder="Your name" value="Player" />
+        <div class="lobby-buttons">
+          <button id="createRoomBtn">Create Room</button>
+          <button id="joinRoomBtn" class="secondary">Join Room</button>
+        </div>
+        <input type="text" id="roomIdInput" placeholder="Room ID (for joining)" />
+        <div id="connectionStatus" class="connection-status disconnected">Disconnected</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Game Screen -->
+  <div id="gameScreen" class="hidden">
+    <header>
+      <h1>
+        Rummikub
+        <span id="roomIdDisplay"></span>
+      </h1>
+      <div class="player-info">
+        <div id="playerBadge" class="player-badge">Waiting...</div>
+        <div id="otherPlayerInfo"></div>
+      </div>
+      <div class="controls">
+        <button id="drawBtn" class="secondary" disabled>Draw Tile</button>
+        <button id="endTurnBtn" class="ghost" disabled>End Turn</button>
+        <button id="checkBtn" class="ghost">Check Table</button>
+        <button id="addRowBtn" class="ghost" style="font-size:11px;padding-inline:8px;">+ Row</button>
+      </div>
+    </header>
+
+    <main>
+      <div class="status-bar">
+        <span class="label">Status</span>
+        <span id="statusMessage" class="status-message">Connecting...</span>
+        <span id="lastCheck" class="pill">No validation yet</span>
+      </div>
+
+      <div class="layout">
+        <section class="panel">
+          <div class="panel-header">
+            <div>Table</div>
+          </div>
+          <div id="table" class="table"></div>
+        </section>
+
+        <section class="panel">
+          <div class="panel-header">
+            <div>Your Rack</div>
+            <div class="pool">
+              Pool tiles:
+              <span id="poolCount" class="pool-count">0</span>
+            </div>
+          </div>
+          <div class="rack">
+            <div class="rack-label">Your tiles</div>
+            <div id="rackRow" class="rack-row" data-drop-zone="rack"></div>
+          </div>
+        </section>
+      </div>
+    </main>
+  </div>
+
+  <script>
+    // --- Configuration ---
+    const SERVER_URL = window.location.origin; // Use same origin, or set to 'http://localhost:3000'
+    let socket = null;
+    let currentRoomId = null;
+    let playerId = null;
+    let playerName = "Player";
+    let gameState = {
+      yourTiles: [],
+      table: [],
+      poolCount: 0,
+      currentTurn: null,
+      isYourTurn: false,
+      players: []
+    };
+
+    // --- DOM Elements ---
+    const lobbyScreen = document.getElementById('lobbyScreen');
+    const gameScreen = document.getElementById('gameScreen');
+    const playerNameInput = document.getElementById('playerNameInput');
+    const roomIdInput = document.getElementById('roomIdInput');
+    const createRoomBtn = document.getElementById('createRoomBtn');
+    const joinRoomBtn = document.getElementById('joinRoomBtn');
+    const connectionStatus = document.getElementById('connectionStatus');
+    const roomIdDisplay = document.getElementById('roomIdDisplay');
+    const playerBadge = document.getElementById('playerBadge');
+    const otherPlayerInfo = document.getElementById('otherPlayerInfo');
+    const statusMessage = document.getElementById('statusMessage');
+    const rackRow = document.getElementById('rackRow');
+    const table = document.getElementById('table');
+    const poolCount = document.getElementById('poolCount');
+    const drawBtn = document.getElementById('drawBtn');
+    const endTurnBtn = document.getElementById('endTurnBtn');
+    const checkBtn = document.getElementById('checkBtn');
+    const addRowBtn = document.getElementById('addRowBtn');
+    const lastCheck = document.getElementById('lastCheck');
+
+    let dragState = { tileId: null, sourceZoneId: null };
+
+    // --- Socket.io Connection ---
+    function connectSocket() {
+      socket = io(SERVER_URL);
+
+      socket.on('connect', () => {
+        playerId = socket.id;
+        updateConnectionStatus(true);
+        setStatus('Connected to server');
+      });
+
+      socket.on('disconnect', () => {
+        updateConnectionStatus(false);
+        setStatus('Disconnected from server');
+      });
+
+      socket.on('error', (data) => {
+        alert('Error: ' + data.message);
+      });
+
+      socket.on('roomCreated', (state) => {
+        currentRoomId = state.roomId;
+        gameState = state;
+        showGameScreen();
+        updateGameDisplay();
+        setStatus(`Room created! Share room ID: ${currentRoomId}`);
+        roomIdDisplay.textContent = `Room: ${currentRoomId}`;
+      });
+
+      socket.on('roomJoined', (state) => {
+        gameState = state;
+        updateGameDisplay();
+        setStatus('Joined room! Waiting for game to start...');
+      });
+
+      socket.on('playerJoined', (data) => {
+        gameState.players = data.players;
+        gameState.gameState = data.gameState;
+        updateGameDisplay();
+        if (data.gameState === 'playing') {
+          setStatus('Game started! It\'s ' + (gameState.isYourTurn ? 'your' : 'the other player\'s') + ' turn.');
+        } else {
+          setStatus('Player joined! Waiting for game to start...');
+        }
+      });
+
+      socket.on('gameStateUpdate', (state) => {
+        gameState = state;
+        updateGameDisplay();
+      });
+
+      socket.on('tileMoved', (data) => {
+        handleRemoteTileMove(data);
+      });
+
+      socket.on('tileDrawn', (data) => {
+        setStatus(data.playerId === playerId ? 'You drew a tile' : 'Opponent drew a tile');
+        updateGameDisplay();
+      });
+
+      socket.on('turnEnded', (data) => {
+        gameState.currentTurn = data.newTurn;
+        gameState.isYourTurn = gameState.currentTurn === playerId;
+        updateGameDisplay();
+        setStatus(gameState.isYourTurn ? 'Your turn!' : 'Opponent\'s turn');
+      });
+
+      socket.on('rowAdded', (data) => {
+        addRowToTable();
+      });
+
+      socket.on('playerLeft', (data) => {
+        setStatus('Opponent left the game');
+        gameState.players = gameState.players.filter(p => p.id !== data.playerId);
+        updateGameDisplay();
+      });
+    }
+
+    function updateConnectionStatus(connected) {
+      connectionStatus.textContent = connected ? 'Connected' : 'Disconnected';
+      connectionStatus.className = 'connection-status ' + (connected ? 'connected' : 'disconnected');
+    }
+
+    // --- Lobby Functions ---
+    createRoomBtn.addEventListener('click', () => {
+      playerName = playerNameInput.value || 'Player';
+      const roomId = 'room-' + Math.random().toString(36).substr(2, 9);
+      socket.emit('createRoom', { roomId, playerName });
+    });
+
+    joinRoomBtn.addEventListener('click', () => {
+      const roomId = roomIdInput.value.trim();
+      if (!roomId) {
+        alert('Please enter a room ID');
+        return;
+      }
+      playerName = playerNameInput.value || 'Player';
+      socket.emit('joinRoom', { roomId, playerName });
+    });
+
+    function showGameScreen() {
+      lobbyScreen.classList.add('hidden');
+      gameScreen.classList.remove('hidden');
+    }
+
+    // --- Game Display Updates ---
+    function updateGameDisplay() {
+      // Update player info
+      const you = gameState.players.find(p => p.isYou);
+      const other = gameState.players.find(p => !p.isYou);
+      
+      if (you) {
+        playerBadge.textContent = `${you.name} (${you.tileCount} tiles)`;
+        playerBadge.classList.toggle('your-turn', gameState.isYourTurn);
+      }
+      
+      if (other) {
+        otherPlayerInfo.textContent = `${other.name}: ${other.tileCount} tiles`;
+      } else {
+        otherPlayerInfo.textContent = 'Waiting for player 2...';
+      }
+
+      // Update buttons
+      drawBtn.disabled = !gameState.isYourTurn || gameState.gameState !== 'playing';
+      endTurnBtn.disabled = !gameState.isYourTurn || gameState.gameState !== 'playing';
+
+      // Update pool count
+      poolCount.textContent = gameState.poolCount.toString();
+
+      // Update rack
+      updateRack();
+
+      // Update table
+      updateTable();
+    }
+
+    function updateRack() {
+      rackRow.innerHTML = '';
+      gameState.yourTiles.forEach(tile => {
+        const el = createTileElement(tile);
+        rackRow.appendChild(el);
+      });
+    }
+
+    function updateTable() {
+      // Clear and rebuild table rows
+      table.innerHTML = '';
+      
+      // Ensure we have at least 3 rows
+      const rowCount = Math.max(3, gameState.table.length);
+      for (let i = 0; i < rowCount; i++) {
+        const row = document.createElement('div');
+        row.className = 'table-row empty';
+        row.dataset.rowIndex = i;
+        row.dataset.dropZone = 'row';
+        row.addEventListener('dragover', onDropZoneDragOver);
+        row.addEventListener('drop', onDropZoneDrop);
+        row.addEventListener('dragleave', onDropZoneDragLeave);
+        
+        // Add tiles from game state (table now contains full tile objects)
+        if (gameState.table[i] && Array.isArray(gameState.table[i])) {
+          gameState.table[i].forEach(tile => {
+            if (tile && tile.id) {
+              const el = createTileElement(tile);
+              row.appendChild(el);
+            }
+          });
+        }
+        
+        updateRowEmptyState(row);
+        table.appendChild(row);
+      }
+    }
+
+    function findTileInState(tileId) {
+      // Check your tiles
+      let tile = gameState.yourTiles.find(t => t.id === tileId);
+      if (tile) return tile;
+      
+      // Check table (now contains full tile objects)
+      for (const row of gameState.table) {
+        if (Array.isArray(row)) {
+          tile = row.find(t => t && t.id === tileId);
+          if (tile) return tile;
+        }
+      }
+      
+      return null;
+    }
+
+    // --- Tile Rendering ---
+    function createTileElement(tile) {
+      const el = document.createElement('div');
+      el.className = 'tile';
+      el.draggable = gameState.isYourTurn && gameState.gameState === 'playing';
+      el.dataset.tileId = tile.id;
+      
+      if (tile.isJoker) {
+        el.classList.add('joker');
+        el.textContent = 'J';
+      } else {
+        el.dataset.color = tile.color;
+        el.textContent = tile.number;
+      }
+
+      if (el.draggable) {
+        el.addEventListener('dragstart', onTileDragStart);
+        el.addEventListener('dragend', onTileDragEnd);
+      }
+
+      return el;
+    }
+
+    // --- Drag & Drop ---
+    function onTileDragStart(e) {
+      if (!gameState.isYourTurn) {
+        e.preventDefault();
+        return;
+      }
+      const tileEl = e.target;
+      dragState.tileId = tileEl.dataset.tileId;
+      dragState.sourceZoneId = tileEl.parentElement.id || null;
+      tileEl.classList.add('dragging');
+      e.dataTransfer.effectAllowed = 'move';
+    }
+
+    function onTileDragEnd(e) {
+      e.target.classList.remove('dragging');
+      dragState.tileId = null;
+      dragState.sourceZoneId = null;
+    }
+
+    function onDropZoneDragOver(e) {
+      if (!gameState.isYourTurn) return;
+      e.preventDefault();
+      e.dataTransfer.dropEffect = 'move';
+      e.currentTarget.classList.add('drag-over');
+    }
+
+    function onDropZoneDragLeave(e) {
+      e.currentTarget.classList.remove('drag-over');
+    }
+
+    function onDropZoneDrop(e) {
+      if (!gameState.isYourTurn) return;
+      e.preventDefault();
+      const zone = e.currentTarget;
+      zone.classList.remove('drag-over');
+
+      const tileId = dragState.tileId;
+      if (!tileId) return;
+
+      const tileEl = document.querySelector(`.tile[data-tile-id="${tileId}"]`);
+      if (!tileEl) return;
+
+      const fromZone = tileEl.parentElement.classList.contains('rack-row') ? 'rack' : 'table';
+      const toZone = zone.classList.contains('rack-row') ? 'rack' : 'table';
+      const rowIndex = toZone === 'table' ? parseInt(zone.dataset.rowIndex) : -1;
+
+      // Update UI immediately
+      zone.appendChild(tileEl);
+      updateRowEmptyState(zone);
+
+      // Send to server
+      socket.emit('moveTile', {
+        roomId: currentRoomId,
+        tileId,
+        fromZone,
+        toZone,
+        rowIndex
+      });
+    }
+
+    function handleRemoteTileMove(data) {
+      // Don't handle your own moves (already handled locally)
+      if (data.playerId === playerId) return;
+      
+      const tileEl = document.querySelector(`.tile[data-tile-id="${data.tileId}"]`);
+      
+      if (!tileEl && data.tile) {
+        // Tile is new (from other player's rack or table)
+        const el = createTileElement(data.tile);
+        el.draggable = false; // Can't drag opponent's tiles
+        
+        if (data.toZone === 'table') {
+          const targetRow = table.querySelector(`[data-row-index="${data.rowIndex}"]`);
+          if (targetRow) {
+            targetRow.appendChild(el);
+            updateRowEmptyState(targetRow);
+          }
+        }
+        return;
+      }
+
+      if (!tileEl) return;
+
+      if (data.fromZone === 'table' && data.toZone === 'rack') {
+        // Tile moved back to opponent's rack (remove from table)
+        tileEl.remove();
+        // Update empty state of source row
+        const rows = Array.from(table.querySelectorAll('.table-row'));
+        rows.forEach(row => updateRowEmptyState(row));
+      } else if (data.fromZone === 'table' && data.toZone === 'table') {
+        // Tile moved between table rows
+        const targetRow = table.querySelector(`[data-row-index="${data.rowIndex}"]`);
+        const sourceRow = table.querySelector(`[data-row-index="${data.sourceRowIndex}"]`);
+        if (targetRow && sourceRow) {
+          targetRow.appendChild(tileEl);
+          updateRowEmptyState(sourceRow);
+          updateRowEmptyState(targetRow);
+        }
+      } else if (data.toZone === 'table') {
+        // Tile moved from rack to table
+        const targetRow = table.querySelector(`[data-row-index="${data.rowIndex}"]`);
+        if (targetRow) {
+          targetRow.appendChild(tileEl);
+          updateRowEmptyState(targetRow);
+        }
+      }
+    }
+
+    function updateRowEmptyState(row) {
+      const hasTiles = row.querySelector('.tile') !== null;
+      row.classList.toggle('empty', !hasTiles);
+    }
+
+    // --- Game Actions ---
+    drawBtn.addEventListener('click', () => {
+      socket.emit('drawTile', { roomId: currentRoomId });
+    });
+
+    endTurnBtn.addEventListener('click', () => {
+      socket.emit('endTurn', { roomId: currentRoomId });
+    });
+
+    addRowBtn.addEventListener('click', () => {
+      socket.emit('addRow', { roomId: currentRoomId });
+    });
+
+    checkBtn.addEventListener('click', () => {
+      validateTable();
+    });
+
+    function addRowToTable() {
+      const row = document.createElement('div');
+      row.className = 'table-row empty';
+      row.dataset.rowIndex = table.children.length;
+      row.dataset.dropZone = 'row';
+      row.addEventListener('dragover', onDropZoneDragOver);
+      row.addEventListener('drop', onDropZoneDrop);
+      row.addEventListener('dragleave', onDropZoneDragLeave);
+      table.appendChild(row);
+    }
+
+    // --- Validation (client-side, simplified) ---
+    function validateTable() {
+      const rows = Array.from(table.querySelectorAll('.table-row'));
+      let allValid = true;
+      let anyTiles = false;
+
+      rows.forEach(row => {
+        const tiles = Array.from(row.querySelectorAll('.tile')).map(el => {
+          const tileId = el.dataset.tileId;
+          // Try to find tile in your rack first, then in table state
+          return gameState.yourTiles.find(t => t.id === tileId) || 
+                 findTileInState(tileId);
+        }).filter(Boolean);
+
+        const hasTiles = tiles.length > 0;
+        anyTiles = anyTiles || hasTiles;
+        row.classList.remove('valid', 'invalid');
+        
+        if (!hasTiles) return;
+
+        const valid = isValidGroup(tiles) || isValidRun(tiles);
+        row.classList.add(valid ? 'valid' : 'invalid');
+        if (!valid) allValid = false;
+      });
+
+      if (!anyTiles) {
+        lastCheck.textContent = 'Nothing to validate';
+        setStatus('Place some tiles on the table, then click Check Table.');
+        return;
+      }
+
+      if (allValid) {
+        lastCheck.textContent = 'All rows are valid';
+        lastCheck.style.background = 'rgba(129, 199, 132, 0.16)';
+        lastCheck.style.borderColor = 'rgba(129, 199, 132, 0.9)';
+        setStatus('Nice! Every row is a valid Rummikub set.');
+      } else {
+        lastCheck.textContent = 'Some rows invalid';
+        lastCheck.style.background = 'rgba(244, 67, 54, 0.16)';
+        lastCheck.style.borderColor = 'rgba(244, 67, 54, 0.9)';
+        setStatus('Red-bordered rows are not valid sets.');
+      }
+    }
+
+    function isValidGroup(tiles) {
+      if (tiles.length < 3 || tiles.length > 4) return false;
+      const jokers = tiles.filter(t => t.isJoker);
+      const nonJokers = tiles.filter(t => !t.isJoker);
+      if (nonJokers.length === 0) return false;
+
+      const num = nonJokers[0].number;
+      if (!nonJokers.every(t => t.number === num)) return false;
+
+      const colors = nonJokers.map(t => t.color);
+      const uniqueColors = new Set(colors);
+      return uniqueColors.size === nonJokers.length;
+    }
+
+    function isValidRun(tiles) {
+      if (tiles.length < 3) return false;
+      const jokers = tiles.filter(t => t.isJoker);
+      const nonJokers = tiles.filter(t => !t.isJoker);
+      if (nonJokers.length === 0) return false;
+
+      const color = nonJokers[0].color;
+      if (!nonJokers.every(t => t.color === color)) return false;
+
+      const numbers = nonJokers.map(t => t.number).sort((a, b) => a - b);
+      for (let i = 0; i < numbers.length - 1; i++) {
+        if (numbers[i] === numbers[i + 1]) return false;
+      }
+
+      let requiredJokers = 0;
+      for (let i = 0; i < numbers.length - 1; i++) {
+        const gap = numbers[i + 1] - numbers[i] - 1;
+        if (gap > 0) requiredJokers += gap;
+      }
+
+      return requiredJokers <= jokers.length;
+    }
+
+    function setStatus(msg) {
+      statusMessage.textContent = msg;
+    }
+
+    // Allow dropping back to rack
+    rackRow.addEventListener('dragover', onDropZoneDragOver);
+    rackRow.addEventListener('drop', onDropZoneDrop);
+    rackRow.addEventListener('dragleave', onDropZoneDragLeave);
+
+    // Initialize
+    connectSocket();
+  </script>
+</body>
+</html>
