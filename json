@@ -1,0 +1,17 @@
+{
+  "name": "rummikub-multiplayer",
+  "version": "1.0.0",
+  "description": "Online multiplayer Rummikub game",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node server.js"
+  },
+  "keywords": ["rummikub", "multiplayer", "game"],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "express": "^4.18.2",
+    "socket.io": "^4.6.1"
+  }
+}
